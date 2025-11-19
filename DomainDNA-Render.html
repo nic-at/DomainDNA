@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>DomainDNA viz</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+
+        .labeltext {
+            font-family: sans-serif;
+            font-size: 18px;
+            font-weight: bold;
+        }
+    </style>
+    <script>
+        function renderDomainDNA(DNAString) {
+
+            /* Open issues:
+                - Drawing overflows with DomainDNAs that extend beyond canvas size - add scrolling or similar in HTML?
+                - think about ideas for the / interval case, to identify *new* registration
+                - initial DNSstate and Delegation state is always "off" - if partial DomainDNA, this might also be "on", but this can't be derived from the info, 
+                  assuming that "R" is always the first Doing here.
+                - maybe stick to whole pixels for some measurements - otoh prevents scaling.
+            */
+
+            const baseSize = 16; // base timeline height in px 
+            const goldenRatio = 1.618034;
+            const circleRadius = baseSize * goldenRatio / 2; // make circles 'beautiful' in relation to line
+
+            const svgWidth = 800;
+            const svgHeight = 100;
+            const svgNS = 'http://www.w3.org/2000/svg';
+
+            const canvas = document.getElementById('canvas');
+
+            canvas.innerHTML = '';
+
+            const svg = document.createElementNS(svgNS, 'svg');
+            svg.setAttribute('width', svgWidth);
+            svg.setAttribute('height', svgHeight);
+            svg.innerHTML = "<defs><clipPath id='cut-third' clipPathUnits='objectBoundingBox'><rect x='0.17' y='-0.2' height='1.4' width='1.2'></clipPath></defs>";
+            // Step 1: Draw timeline itself - special interval case is '/' and '&'
+            let cursor = 20; // leave some space on left side
+            let dnsState = false;
+            let delegationState = false;
+
+            for (let i = 0; i < DNAString.length; i += 2) {
+                let interval = DNAString[i];
+                let doing = DNAString[i + 1];
+                // FIXME: Add validation of Interval and Doing 
+
+                switch (interval) {
+                    case '/': // ' do nothing for that 
+                        break;
+                    case '&': // let doings overlap, but do not draw line
+                        cursor +=  spacing(interval);
+                        break;
+                    case '0': // no line for '0', doings are put "skin to skin". No line drawn either
+                        cursor += spacing(interval);
+                        break;
+                    case '1':
+                    case '2':
+                    case '3':
+                    case '4':
+                    case '5':
+                        drawLine(interval);
+
+                        cursor += spacing(interval);
+                        break;
+                    case '+':
+                        interval = 10; // fall through to drawing!
+                    case '6':
+                    case '7':
+                    case '8':
+                    case '9':
+                        drawLine(interval);
+                        
+                        // draw beacon / stripe lines 
+                        let beaconCount = parseInt(interval) - 5;  
+                        let beaconCursor = cursor + spacing(interval) / 2 - (beaconCount - 1) * baseSize / goldenRatio / 2;
+                        for (true; beaconCount > 0; beaconCount--) {
+                            const b = document.createElementNS(svgNS, 'line');
+                            b.setAttribute('x1', beaconCursor);
+                            b.setAttribute('y1', svgHeight / 2 - (delegationState ? circleRadius : circleRadius / goldenRatio));
+                            b.setAttribute('x2', beaconCursor);
+                            b.setAttribute('y2', svgHeight / 2 + (delegationState ? circleRadius : circleRadius / goldenRatio));
+                            b.setAttribute('stroke', delegationState ? '#ffffff' : '#777777');
+                            b.setAttribute('stroke-width', delegationState ? baseSize / 4 : baseSize / 5);
+                            b.setAttribute('transform',
+                                'rotate(30,' + beaconCursor + ',' + svgHeight / 2 + ')');
+                            svg.appendChild(b);
+                            beaconCursor += baseSize / goldenRatio;
+                        }
+
+                        cursor += spacing(interval);
+                        break;
+                    default:
+                        break;
+
+                }
+                switch (doing) {
+                    case 'R':
+                    case 'U':
+                        dnsState = true;
+                        break;
+                    case 'D':
+                    case 'L':
+                        dnsState = false;
+                        break;
+                    default:
+                        break;
+                }
+                switch (doing) {
+                    case 'R':
+                        delegationState = true;
+                        break;
+                    case 'P':
+                        delegationState = false;
+                        break;
+                    default:
+                        break;
+                }
+            }
+
+            // step 2 - re-start at initial position, draw Doings
+            cursor = 20;
+            for (let i = 0; i < DNAString.length; i += 2) {
+                let interval = DNAString[i];
+                let doing = DNAString[i + 1];
+                // FIXME: validate - but should happen in Step 1 already.
+
+                cursor += spacing(interval);
+                if (doing == '>') {
+                    const pfeil = document.createElementNS(svgNS, 'polygon');
+                    pfeil.setAttribute('points',
+                        (cursor - 0.2) + ',' + (svgHeight / 2 - baseSize / 2) + ' ' +
+                        (cursor - 0.2) + ',' + (svgHeight / 2 + baseSize / 2) + ' ' +
+                        (cursor + circleRadius / goldenRatio) + ',' + svgHeight / 2);
+                    pfeil.setAttribute('fill', delegationState ? (dnsState ? '#004a6c' : '#6E93A4') : '#dddddd');
+                    pfeil.setAttribute('stroke', 0);
+                    svg.appendChild(pfeil);
+                } else {
+                    const bummel = document.createElementNS(svgNS, 'circle');
+                    bummel.setAttribute('cx', cursor);
+                    bummel.setAttribute('cy', svgHeight / 2);
+                    bummel.setAttribute('r', circleRadius);
+                    bummel.setAttribute('stroke-width', 2);
+                    bummel.setAttribute('stroke', 'black');
+                    bummel.setAttribute('fill', 'white');
+                    if (interval == '&') {
+                        bummel.setAttribute('clip-path', 'url(#cut-third)');
+                    }
+                    svg.appendChild(bummel);
+                    const label = document.createElementNS(svgNS, 'text');
+                    label.setAttribute('x', cursor);
+                    label.setAttribute('y', svgHeight / 2 + 6);
+                    label.setAttribute('text-anchor', 'middle')
+                    label.setAttribute('class', 'labeltext');
+                    label.innerHTML = doing;
+                    svg.appendChild(label);
+                    canvas.appendChild(svg);
+                }
+                
+            }
+
+            function drawLine(interval) {
+                const line = document.createElementNS(svgNS, 'line');
+                line.setAttribute('x1', cursor);
+                line.setAttribute('y1', svgHeight / 2);
+                line.setAttribute('y2', svgHeight / 2);
+                line.setAttribute('x2', cursor + spacing(interval));
+                line.setAttribute('stroke', dnsState ? '#004a6c' : '#6E93A4');
+                line.setAttribute('stroke-width', baseSize);
+                if (!delegationState) {
+                    line.setAttribute('stroke-width', baseSize / 3);
+                    line.setAttribute('stroke', '#dddddd');
+                }
+                svg.appendChild(line);
+            }
+
+            function spacing(interval) {
+                let i = interval;
+                switch (i) {
+                    case '/':
+                        return (0);
+                    case '&':
+                        return (1.3 * circleRadius);
+                    case '+':
+                        i = '10';
+                    default:
+                        return (2 * circleRadius + parseInt(i) * circleRadius / goldenRatio);
+                }
+
+            }
+
+        }
+    </script>
+</head>
+
+<body>
+    <h1>DomainDNA Visualzation</h1>
+    <p>Enter (valid!) DomainDNA string to render it below:</p>
+    <input type="text" id="DDNA" placeholder="Enter DomainDNA string" value="/R2C&N7D6P9R4L6U2P+>">
+    <button onclick="renderDomainDNA(document.getElementById('DDNA').value)">Update</button>
+    <div id='canvas' />
+</body>
+<script>
+    window.onload = renderDomainDNA(document.getElementById('DDNA').value);
+</script>
+<p>
+    More info: <a href="https://github.com/nic-at/DomainDNA">nic.at DomainDNA (GitHub)</a>
+</p>
+
+</html>

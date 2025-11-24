@@ -13,19 +13,41 @@
             font-size: 18px;
             font-weight: bold;
         }
+
+        #error {
+            color: red;
+            margin-top: 8px;
+            font-family: sans-serif;
+        }
     </style>
     <script>
         function renderDomainDNA(DNAString) {
-
             /* Open issues:
                 - Drawing overflows with DomainDNAs that extend beyond canvas size - add scrolling or similar in HTML?
-                - think about ideas for the / interval case, to identify *new* registration
-                - initial DNSstate and Delegation state is always "off" - if partial DomainDNA, this might also be "on", but this can't be derived from the info, 
+                - Think about ideas for the / interval case, to identify *new* registrations
+                - Initial DNS state and delegation state is always "off" - if partial DomainDNA, this might also be "on", but this can't be derived from the info,
                   assuming that "R" is always the first Doing here.
-                - maybe stick to whole pixels for some measurements - otoh prevents scaling.
+                - Maybe stick to whole pixels for some measurements - on the other hand this prevents scaling.
             */
 
-            const baseSize = 16; // base timeline height in px 
+            const canvas = document.getElementById('canvas');
+            const errorDiv = document.getElementById('error');
+
+            // Clear previous output
+            canvas.innerHTML = '';
+            errorDiv.textContent = '';
+
+            // === VALIDATION ===
+            const validationError = validateDomainDNA(DNAString);
+            if (validationError) {
+                errorDiv.textContent = validationError;
+                return {
+                    valid: false,
+                    error: validationError
+                };
+            }
+
+            const baseSize = 16; // base timeline height in px
             const goldenRatio = 1.618034;
             const circleRadius = baseSize * goldenRatio / 2; // make circles 'beautiful' in relation to line
 
@@ -33,14 +55,11 @@
             const svgHeight = 100;
             const svgNS = 'http://www.w3.org/2000/svg';
 
-            const canvas = document.getElementById('canvas');
-
-            canvas.innerHTML = '';
-
             const svg = document.createElementNS(svgNS, 'svg');
             svg.setAttribute('width', svgWidth);
             svg.setAttribute('height', svgHeight);
-            svg.innerHTML = "<defs><clipPath id='cut-third' clipPathUnits='objectBoundingBox'><rect x='0.17' y='-0.2' height='1.4' width='1.2'></clipPath></defs>";
+            svg.innerHTML = "<defs><clipPath id='cut-third' clipPathUnits='objectBoundingBox'><rect x='0.17' y='-0.2' height='1.4' width='1.2'></rect></clipPath></defs>";
+
             // Step 1: Draw timeline itself - special interval case is '/' and '&'
             let cursor = 20; // leave some space on left side
             let dnsState = false;
@@ -49,13 +68,12 @@
             for (let i = 0; i < DNAString.length; i += 2) {
                 let interval = DNAString[i];
                 let doing = DNAString[i + 1];
-                // FIXME: Add validation of Interval and Doing 
 
                 switch (interval) {
-                    case '/': // ' do nothing for that 
+                    case '/': // do nothing for that
                         break;
                     case '&': // let doings overlap, but do not draw line
-                        cursor +=  spacing(interval);
+                        cursor += spacing(interval);
                         break;
                     case '0': // no line for '0', doings are put "skin to skin". No line drawn either
                         cursor += spacing(interval);
@@ -66,7 +84,6 @@
                     case '4':
                     case '5':
                         drawLine(interval);
-
                         cursor += spacing(interval);
                         break;
                     case '+':
@@ -76,11 +93,11 @@
                     case '8':
                     case '9':
                         drawLine(interval);
-                        
-                        // draw beacon / stripe lines 
-                        let beaconCount = parseInt(interval) - 5;  
+
+                        // Draw beacon / stripe lines
+                        let beaconCount = parseInt(interval, 10) - 5;
                         let beaconCursor = cursor + spacing(interval) / 2 - (beaconCount - 1) * baseSize / goldenRatio / 2;
-                        for (true; beaconCount > 0; beaconCount--) {
+                        for (; beaconCount > 0; beaconCount--) {
                             const b = document.createElementNS(svgNS, 'line');
                             b.setAttribute('x1', beaconCursor);
                             b.setAttribute('y1', svgHeight / 2 - (delegationState ? circleRadius : circleRadius / goldenRatio));
@@ -97,9 +114,11 @@
                         cursor += spacing(interval);
                         break;
                     default:
+                        // Should never happen due to validation
                         break;
-
                 }
+
+                // DNS state
                 switch (doing) {
                     case 'R':
                     case 'U':
@@ -112,6 +131,8 @@
                     default:
                         break;
                 }
+
+                // Delegation state
                 switch (doing) {
                     case 'R':
                         delegationState = true;
@@ -124,46 +145,53 @@
                 }
             }
 
-            // step 2 - re-start at initial position, draw Doings
+            // Step 2 - restart at initial position, draw doings
             cursor = 20;
             for (let i = 0; i < DNAString.length; i += 2) {
                 let interval = DNAString[i];
                 let doing = DNAString[i + 1];
-                // FIXME: validate - but should happen in Step 1 already.
 
                 cursor += spacing(interval);
-                if (doing == '>') {
-                    const pfeil = document.createElementNS(svgNS, 'polygon');
-                    pfeil.setAttribute('points',
+                if (doing === '>') {
+                    const arrow = document.createElementNS(svgNS, 'polygon');
+                    arrow.setAttribute('points',
                         (cursor - 0.2) + ',' + (svgHeight / 2 - baseSize / 2) + ' ' +
                         (cursor - 0.2) + ',' + (svgHeight / 2 + baseSize / 2) + ' ' +
                         (cursor + circleRadius / goldenRatio) + ',' + svgHeight / 2);
-                    pfeil.setAttribute('fill', delegationState ? (dnsState ? '#004a6c' : '#6E93A4') : '#dddddd');
-                    pfeil.setAttribute('stroke', 0);
-                    svg.appendChild(pfeil);
+                    arrow.setAttribute('fill', delegationState ? (dnsState ? '#004a6c' : '#6E93A4') : '#dddddd');
+                    arrow.setAttribute('stroke', 0);
+                    svg.appendChild(arrow);
                 } else {
-                    const bummel = document.createElementNS(svgNS, 'circle');
-                    bummel.setAttribute('cx', cursor);
-                    bummel.setAttribute('cy', svgHeight / 2);
-                    bummel.setAttribute('r', circleRadius);
-                    bummel.setAttribute('stroke-width', 2);
-                    bummel.setAttribute('stroke', 'black');
-                    bummel.setAttribute('fill', 'white');
-                    if (interval == '&') {
-                        bummel.setAttribute('clip-path', 'url(#cut-third)');
+                    const node = document.createElementNS(svgNS, 'circle');
+                    node.setAttribute('cx', cursor);
+                    node.setAttribute('cy', svgHeight / 2);
+                    node.setAttribute('r', circleRadius);
+                    node.setAttribute('stroke-width', 2);
+                    node.setAttribute('stroke', 'black');
+                    node.setAttribute('fill', 'white');
+                    if (interval === '&') {
+                        node.setAttribute('clip-path', 'url(#cut-third)');
                     }
-                    svg.appendChild(bummel);
+                    svg.appendChild(node);
                     const label = document.createElementNS(svgNS, 'text');
                     label.setAttribute('x', cursor);
                     label.setAttribute('y', svgHeight / 2 + 6);
-                    label.setAttribute('text-anchor', 'middle')
+                    label.setAttribute('text-anchor', 'middle');
                     label.setAttribute('class', 'labeltext');
                     label.innerHTML = doing;
                     svg.appendChild(label);
-                    canvas.appendChild(svg);
                 }
-                
             }
+
+            // Attach SVG once
+            canvas.appendChild(svg);
+
+            return {
+                valid: true,
+                error: null
+            };
+
+            // ==== Helper functions ====
 
             function drawLine(interval) {
                 const line = document.createElementNS(svgNS, 'line');
@@ -184,35 +212,68 @@
                 let i = interval;
                 switch (i) {
                     case '/':
-                        return (0);
+                        return 0;
                     case '&':
-                        return (1.3 * circleRadius);
+                        return 1.3 * circleRadius;
                     case '+':
                         i = '10';
                     default:
-                        return (2 * circleRadius + parseInt(i) * circleRadius / goldenRatio);
+                        return 2 * circleRadius + parseInt(i, 10) * circleRadius / goldenRatio;
                 }
-
             }
 
+            function validateDomainDNA(str) {
+                if (typeof str !== 'string' || str.length === 0) {
+                    return 'DomainDNA must be a non-empty string.';
+                }
+
+                if (str.length % 2 !== 0) {
+                    return 'DomainDNA must have an even number of characters (pairs of interval + doing).';
+                }
+
+                const allowedIntervals = new Set(['/','&','0','1','2','3','4','5','6','7','8','9','+']);
+                // Allow all uppercase letters + '>' as doings (R,U,D,L,P,C,N,...)
+                const allowedDoings = new Set('ABCDEFGHIJKLMNOPQRSTUVWXYZ>'.split(''));
+
+                for (let i = 0; i < str.length; i += 2) {
+                    const interval = str[i];
+                    const doing = str[i + 1];
+
+                    if (!allowedIntervals.has(interval)) {
+                        return `Invalid interval character at position ${i}: '${interval}'.`;
+                    }
+                    if (!allowedDoings.has(doing)) {
+                        return `Invalid doing character at position ${i + 1}: '${doing}'.`;
+                    }
+                }
+
+                return null; // everything ok
+            }
         }
     </script>
 </head>
 
 <body>
-    <h1>DomainDNA Visualzation</h1>
-    <p>Enter (valid!) DomainDNA string to render it below:</p>
-    <input type="text" id="DDNA" placeholder="Enter DomainDNA string" value="/R2C&N7D6P9R4L6U2P+>">
-    <button onclick="renderDomainDNA(document.getElementById('DDNA').value)">Update</button>
-    <div id='canvas' />
-</body>
+<h1>DomainDNA Visualization</h1>
+<p>Enter (valid!) DomainDNA string to render it below:</p>
+<input type="text" id="DDNA" placeholder="Enter DomainDNA string"
+       value="/R2C&N7D6P9R4L6U2P+>">
+<button onclick="renderDomainDNA(document.getElementById('DDNA').value)">Update</button>
+
+<div id="error"></div>
+<div id="canvas"></div>
+
 <script>
-    window.onload = renderDomainDNA(document.getElementById('DDNA').value);
+    window.onload = function () {
+        renderDomainDNA(document.getElementById('DDNA').value);
+    };
 </script>
+
 <p>
-    Author: Alexander Mayrhofer; nic.at | 
+    Author: Alexander Mayrhofer; nic.at |
     More info: <a href="https://github.com/nic-at/DomainDNA">nic.at DomainDNA (GitHub)</a>
-     | License: <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
+    | License: <a href="https://creativecommons.org/licenses/by-sa/4.0/">CC BY-SA 4.0</a>
 </p>
+</body>
 
 </html>

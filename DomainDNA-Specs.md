@@ -2,16 +2,20 @@
 
 **DomainDNA: Domain Doings Notation (Abbreviated)**
 
-v0.1 - 2025-11-19
+v0.2 - 2025-11-24
 
 Alexander Mayrhofer, Clemens Moritz; nic.at GmbH
 
 License: 
 
 * This Document itself licensed under [CC-BY-4.0](https://creativecommons.org/licenses/by/4.0)
-* If derivative works change significant parts of this specification, the resulting work must not be named "DomainDNA", but should mention "based on DomainDNA". This is to prevent "Balkanization" of the concept.
+* If derivative works change significant parts of this specification, the resulting work must not be named "DomainDNA", but should mention "basbed on DomainDNA". This is to prevent "Balkanization" of the concept.
 
 *(Non-legal / less scary version - We would love if you found DomainDNA useful, and even better if you have ideas to improve it! Buuuut please talk to the authors if you think DomainDNA can be changed for the better - and we are more than happy to discuss any ideas / changes for integration into the base specs.)*
+
+Changes: 
+
+- v0.2 - Added description of Domain state assumptions and some smaller changes
 
 ## Introduction
 Domain Names are typically administrated by a business relationship between a “Registry” and a “Registrar”. The Registry keeps the authoritative information about the state (and, in case of a “thick” registry, also ownership information), while the Registrar typically performs transactions on said domain names, based on requests by their customers (The Registrant). The set of possible transactions as well as their impact on the state of domain are typically defined by the Registry.
@@ -98,8 +102,7 @@ Constructing a Full DomainDNA from the full transaction information of a domain 
 2) Map each transaction interval and transaction type to the respective *Interval Descriptor* and *Doings Descriptor(s)*. Note that a single transaction type could potentially create multiple *Doings*. If that is the case, these *Doings* must be seperated by a '&' interval descriptor (eg. domain:update -> *N*-*&*-*C*-*&*-*S*).
 3) Create a strict, repetitive, chronological sequence starting with exactly one *Interval Descriptor*, followed by exactly one *Doings Descriptor*, repeating until the sequence of descriptor data is exhausted. For the first *Doing* (typically an *R*) the preceding *Interval* is undefined, and  the descriptor */* must be used in this case.
 4) At the end of the data sequence, calculate the interval between the last transaction time and the current point in time, map this to the respective *Interval Descriptor*, and append both this and the special '>' *Doing Descriptor* to the end of the string.
-
-TODO: "presentation form" of DomainDNA
+5) If the *DomainDNA* is prepared for human consumption, optionally add the seperator string `:` between each *Word*.
 
 ### Substrings of Full DomainDNA Strings
 
@@ -111,8 +114,6 @@ As described above, a *Full DomainDNA* (or simply *DomainDNA*) contains the whol
 * Preparing the data for use in machine learning models
 
 We define the following terminology for the various cases of substrings:
-
-TODO Example (same as above?)
 
 * **Registration DomainDNA** or **Delegation DomainDNA** is defined as the string reflecting the transactions of a single registration of a domain (from Registration to Now or Purge). This includes the *Interval Descriptor* preceding the Registration. 
 * **DomainDNA Word** is defined as the two-character sequence of one *Interval Descriptor* followed by one *Doings Descriptor* (eg. '6C').
@@ -137,12 +138,41 @@ A space (' ') character may also be used as seperator, however, this induces the
 
 This section contains a list of examples with a brief description of each case.
 
-1) `/R7C2N8T9D5P2R4>` is a *Full DomainDNA* of a domain name that was registered twice (see the two `R`s). In the first registration (note the `/R`) Owner and Nameserver were updated in quick succession (see `C2N` *Fragment*) it was transferred (see *Doings Descriptor* `T`) after / before long periods of time (see  *Fragment* `8T9`). Once deleted, it went through some redemption period (see *Fragment* `D5P`). The subsequent second registration was a reasonably quick drop catch (See  *Fragment* `P2R` - less than 2 minutes). The second registration is pretty fresh (See  *Fragment* `R4>' - less than 36 hours ago). 
+1) `/R7C1N8T9D5P2R4>` is a *Full DomainDNA* of a domain name that was registered twice (see the two `R`s). In the first registration (note the `/R`) Owner and Nameserver were updated in quick succession (see `C1N` *Fragment*), and it was transferred (see *Doings Descriptor* `T`) after / before long periods of time (see  *Fragment* `8T9`). Once deleted, it went through some redemption period (see *Fragment* `D5P`). The subsequent registration was a reasonably quick drop catch (See  *Fragment* `P2R` - less than 2 minutes). The second registration is pretty fresh (See  *Fragment* `R4>' - less than 36 hours ago). 
 2) `/R:7C:2N:8T:9D:5P:2R:4>` is the identical example as 1), but contains the `:` seperator between *Words*, purely for readability.
 3) `7R4N&S6N+>` must be a *Delegation DomainDNA* as there is an implicit *Interval Descriptor* before the registration (See *Word* `7R`). There was some DNSSEC activity/changes, at the same time nameserver information was changed (See `N&S` *Fragment*). After a while, the nameservers were changed again, and from there on, no transactions were done for over 7 years until now (See *Sequence* `6N+>`).
-4) `3R2N&C5L3P` is a *Sequence* (Note the missing `>` now *Doing* at the end, which would make it a *Delegation DomainDNA*). It reveals that this was a dropcatch, was quicky changed after registration, and - for whatever reason - was pretty quickly `L` locked and `P` purged very shortly thereafter.
+4) `3R2N&C5L3P` is a *Sequence* (Note the missing `>` now *Doing* at the end, which would make it a *Delegation DomainDNA*). It reveals that this was a dropcatch, was quicky changed after registration, and - for whatever reason - was pretty quickly `L` locked and `P` purged very shortly thereafter. Note the Nameserver and Owner change (`N&C`) - these two *Doings* happened likely i na single transaction.
 5) `grep 'P[&12]R' domaindna-list.txt` assumes a list of *DomainDNA* information in a file, and uses `grep` to find all very fast drop catches by pattern.
 6) `6N4SN5D` is an invalid *Fragment* as two *Doing Descriptors* can never occur without an *Interval Descriptor* in between (See `SN`)
+7) `/R 7C 2N 8T 9D 5P 2R 4>` is the identical example as 1), but contains the alternative "` `" seperator between *Words*, again for readability. Note that this might make the string wrap around etc. when displayed.
+
+## DomainDNA and States of a Domain Name
+
+Out of the many states a Domain Name can exist during its lifecycle, we believe that two states of a domain name are of particular importance. These are:
+
+* *Registration State*: Whether or not a Domain Name "exists" / is currently registered / administratively delegated (= has an entry in the Registry Database)
+* *DNS State*: Whether or not a Domain Name is published in the DNS.
+
+As described in previous sections, DomainDNA contains *Transaction Descriptors* of a domain, and therefore does not directly contain state information. However, as transactions are essentially state changes, some states can be concluded from the sequence of the *Transaction Descriptors* in DomainDNA. 
+
+
+
+
+| Doing Descriptor | Registration exists before | Registration exists after | DNS State before | DNS State after | 
+|--------------|-----------|---------|---------|---------|
+| R | no  | yes | no | yes | 
+| D | yes | yes | ? | no |
+| L | yes | yes | yes | no |
+| U | yes | yes | no | yes |
+| P | yes | no | no | no |
+
+We believe that we have constructed *DomainDNA* in the way so that all *Doings* that change any of the states are included. Hence the states cannot change within one *Interval*. 
+
+The above assumptions have their limitations when it comes to deriving status from DomainDNA information that is not a *Full DomainDNA* or *Delegation DomainDNA*. For example, a *Sequence* of `5N3C+D` does not allow for identification of the *DNS State* before the `D` *Doing*, as the Domain name might have been eg. `L`ocked before the start of the data in the *Sequence*.
+
+The above assumptions also fail under certain flavours of registry policy. But! Be not afraid, there are workarounds:
+
+1) A Registry allows registrations without nameservers (be it on registration time, or by means of updating a domain and remove existing nameservers). This would prevent the publication of the respective Domain in the DNS, independent from whether the derived *DNS State* would allow such publication. As a workaround, this can be represented by appending the `&L` or `&U` *Words* to such transactions ("Synthetic Word").
 
 ## TODO 
 
@@ -150,10 +180,10 @@ This section lists open issues of this document
 
 ### Specs
 
-- Describe Status assumptions depending on Doings
-- Sort order in & Interval groups
-- discuss data quality issues in detail 
-- Does Terminology make sense?
+- Status assumptions might not be correct under certain registry policies
+- Explain Sort order in & Interval groups
+- Discuss data quality issues in detail 
+- Doublecheck Terminology.
 
 ## For Further Study
 

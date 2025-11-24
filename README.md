@@ -1,4 +1,7 @@
 # DomainDNA
+
+Alexander Mayrhofer, Clemens Moritz (nic.at). Visualization contains contribution from Benjamin Berthold (DENIC).
+
 Code &amp; Specs of the DomainDNA. Contains the following elements:
 
 * [DomainDNA Specifications](DomainDNA-Specs.md) - (Draft?) Version of the DomainDNA Specifications
